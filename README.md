@@ -1,71 +1,198 @@
-# MySQL 8.4 LTS InnoDB Cluster Setup (WafiCluster)
+# MySQL 8.4 LTS InnoDB Cluster with High Availability (WafiCluster)
 
-This repository documents the step-by-step implementation of a **Highly Available (HA) MySQL InnoDB Cluster** using **Group Replication** and **MySQL Router** on Oracle Linux 9.
+This repository provides a step-by-step guide and configuration for deploying a **3-node MySQL InnoDB Cluster** using **Group Replication** and **MySQL Router** on Oracle Linux 9.
 
 ---
 
-## 🏗️ Cluster Architecture
+## 🏗️ Architecture Overview
 
-The architecture consists of a three-node cluster providing automatic failover and a MySQL Router acting as the intelligent gateway for application traffic.
+The cluster is designed for **High Availability (HA)**. It ensures that if the Primary node fails, a Secondary node is automatically promoted to Primary without manual intervention.
 
-```text
-                     ┌────────────────────────┐
-                     │      MySQL Router      │
-                     │  (Port 6446 - R/W)     │
-                     └──────────┬─────────────┘
-                                │
-          ┌─────────────────────┼─────────────────────┐
-          │                     │                     │
-   ┌──────────────┐      ┌──────────────┐      ┌──────────────┐
-   │   dc-node1   │      │   dc-node2   │      │   dc-node3   │
-   │ 192.168.56.11│      │ 192.168.56.12│      │ 192.168.56.13│
-   │   PRIMARY    │◄────►│   SECONDARY  │◄────►│   SECONDARY  │
-   └──────────────┘      └──────────────┘      └──────────────┘
-          │                     │                     │
-          └─────────── Group Replication ─────────────┘
-                       (Port 33061)
-🖥️ Node DetailsNode NameIP AddressRoleOSdc-node1192.168.56.11PrimaryOracle Linux 9dc-node2192.168.56.12SecondaryOracle Linux 9dc-node3192.168.56.13SecondaryOracle Linux 9🌐 1. Network & Firewall ConfigurationTo ensure the nodes can communicate for Group Replication and Cloning, run these commands on all nodes:Bash# Set up firewall ports
-sudo firewall-cmd --permanent --add-port={3306,33060,33061,33062}/tcp
-sudo firewall-cmd --reload
+- **Primary Node (R/W):** Handles all write operations and data consistency.
+- **Secondary Nodes (R/O):** Act as hot-standbys and handle read-only traffic.
+- **MySQL Router:** Serves as the intelligent gateway, routing traffic to the correct nodes.
 
-# Update /etc/hosts for easy naming
+### 🖥️ Node Details
+| Node Name | IP Address     | Role      | OS             |
+| --------- | -------------- | --------- | -------------- |
+| dc-node1  | 192.168.56.11  | Primary   | Oracle Linux 9 |
+| dc-node2  | 192.168.56.12  | Secondary | Oracle Linux 9 |
+| dc-node3  | 192.168.56.13  | Secondary | Oracle Linux 9 |
+
+---
+
+## ⚙️ Prerequisites
+
+* **Environment:** Vagrant & VirtualBox
+* **Operating System:** Oracle Linux 9
+* **User Privileges:** Sudo access for `vagrant` user
+* **Networking:** Host-only adapter (192.168.56.0/24 range)
+
+---
+
+## 🌐 1. Network & Firewall Setup
+
+Run these commands on **all nodes** to ensure seamless communication:
+
+```bash
+# Set up hostnames
 sudo vi /etc/hosts
-# Add the following lines:
+# Add the following:
 192.168.56.11 dc-node1
 192.168.56.12 dc-node2
 192.168.56.13 dc-node3
-📦 2. Installation (All Nodes)Install the MySQL 8.4 LTS repository and the required server and shell packages:Bashsudo dnf install -y [https://dev.mysql.com/get/mysql84-community-release-el9-1.noarch.rpm](https://dev.mysql.com/get/mysql84-community-release-el9-1.noarch.rpm)
-sudo dnf install -y mysql-community-server mysql-shell
+
+# Open cluster-specific ports
+sudo firewall-cmd --permanent --add-port={3306,33060,33061,33062}/tcp
+sudo firewall-cmd --reload
+
+2. Installation (All Nodes)
+
+Install the official MySQL 8.4 LTS repository and the core components:
+
+# Add MySQL Repository
+sudo dnf install -y [https://dev.mysql.com/get/mysql84-community-release-el9-1.noarch.rpm](https://dev.mysql.com/get/mysql84-community-release-el9-1.noarch.rpm)
+
+# Install MySQL Server, Shell, and Router
+sudo dnf install -y mysql-community-server mysql-shell mysql-router-community
+
+# Enable and start MySQL
 sudo systemctl enable --now mysqld
-⚡ 3. Cluster Initialization (Using MySQL Shell)Connect to the Seed Node (dc-node1)Bashmysqlsh --uri root@192.168.56.11:3306
-Configure and Create ClusterWithin the MySQL Shell (JS > mode):JavaScript// Configure the instance for cluster usage
+
+⚡ 3. Cluster Initialization
+A. Initialize the Seed Node (dc-node1)
+
+Access the MySQL Shell to configure the first instance:
+mysqlsh --uri root@192.168.56.11:3306
+// Configure instance for cluster compatibility
 dba.configureInstance('root@192.168.56.11:3306')
 
-// Create the cluster
+// Create the cluster named 'WafiCluster'
 var cluster = dba.createCluster('WafiCluster');
-➕ 4. Expanding the ClusterAdd the remaining nodes from the dc-node1 shell. When prompted, select [C]lone to synchronize data automatically.JavaScriptcluster.addInstance('root@192.168.56.12:3306')
-cluster.addInstance('root@192.168.56.13:3306')
-🚦 5. MySQL Router ConfigurationInstall and bootstrap the router on dc-node1 to handle application traffic and Read/Write splitting.Bash# Install Router
-sudo yum install mysql-router-community -y
 
-# Bootstrap against the cluster
+B. Add Secondary Nodes
+
+Expand the cluster by adding dc-node2 and dc-node3. When prompted for recovery, choose [C]lone.
+cluster.addInstance('root@192.168.56.12:3306')
+cluster.addInstance('root@192.168.56.13:3306')
+
+To copy the README content for GitHub, you should use the raw Markdown format to ensure all the formatting, tables, and code blocks stay intact.
+How to Copy:
+
+    Select the text inside the box below.
+
+    Copy (Ctrl+C or Cmd+C).
+
+    Go to your GitHub repository, click Add file > Create new file.
+
+    Name it README.md.
+
+    Paste (Ctrl+V or Cmd+V) and commit the changes.
+
+README.md
+Markdown
+
+# MySQL 8.4 LTS InnoDB Cluster with High Availability (WafiCluster)
+
+This repository provides a step-by-step guide and configuration for deploying a **3-node MySQL InnoDB Cluster** using **Group Replication** and **MySQL Router** on Oracle Linux 9.
+
+---
+
+## 🏗️ Architecture Overview
+
+The cluster is designed for **High Availability (HA)**. It ensures that if the Primary node fails, a Secondary node is automatically promoted to Primary without manual intervention.
+
+- **Primary Node (R/W):** Handles all write operations and data consistency.
+- **Secondary Nodes (R/O):** Act as hot-standbys and handle read-only traffic.
+- **MySQL Router:** Serves as the intelligent gateway, routing traffic to the correct nodes.
+
+### 🖥️ Node Details
+| Node Name | IP Address     | Role      | OS             |
+| --------- | -------------- | --------- | -------------- |
+| dc-node1  | 192.168.56.11  | Primary   | Oracle Linux 9 |
+| dc-node2  | 192.168.56.12  | Secondary | Oracle Linux 9 |
+| dc-node3  | 192.168.56.13  | Secondary | Oracle Linux 9 |
+
+---
+
+## ⚙️ Prerequisites
+
+* **Environment:** Vagrant & VirtualBox
+* **Operating System:** Oracle Linux 9
+* **User Privileges:** Sudo access for `vagrant` user
+* **Networking:** Host-only adapter (192.168.56.0/24 range)
+
+---
+
+## 🌐 1. Network & Firewall Setup
+
+Run these commands on **all nodes** to ensure seamless communication:
+
+```bash
+# Set up hostnames
+sudo vi /etc/hosts
+# Add the following:
+192.168.56.11 dc-node1
+192.168.56.12 dc-node2
+192.168.56.13 dc-node3
+
+# Open cluster-specific ports
+sudo firewall-cmd --permanent --add-port={3306,33060,33061,33062}/tcp
+sudo firewall-cmd --reload
+
+📦 2. Installation (All Nodes)
+
+Install the official MySQL 8.4 LTS repository and the core components:
+Bash
+
+# Add MySQL Repository
+sudo dnf install -y [https://dev.mysql.com/get/mysql84-community-release-el9-1.noarch.rpm](https://dev.mysql.com/get/mysql84-community-release-el9-1.noarch.rpm)
+
+# Install MySQL Server, Shell, and Router
+sudo dnf install -y mysql-community-server mysql-shell mysql-router-community
+
+# Enable and start MySQL
+sudo systemctl enable --now mysqld
+
+⚡ 3. Cluster Initialization
+A. Initialize the Seed Node (dc-node1)
+
+Access the MySQL Shell to configure the first instance:
+Bash
+
+mysqlsh --uri root@192.168.56.11:3306
+
+Inside MySQL Shell (JS > mode):
+JavaScript
+
+// Configure instance for cluster compatibility
+dba.configureInstance('root@192.168.56.11:3306')
+
+// Create the cluster named 'WafiCluster'
+var cluster = dba.createCluster('WafiCluster');
+
+B. Add Secondary Nodes
+
+Expand the cluster by adding dc-node2 and dc-node3. When prompted for recovery, choose [C]lone.
+JavaScript
+
+cluster.addInstance('root@192.168.56.12:3306')
+cluster.addInstance('root@192.168.56.13:3306')
+
+🚦 4. MySQL Router Setup
+
+Bootstrap the MySQL Router on dc-node1 to act as the traffic load balancer.
+# Bootstrap the router against the cluster
 sudo mysqlrouter --bootstrap root@192.168.56.11:3306 --user=mysqlrouter
 
-# Start and enable the service
+# Enable and start the service
 sudo systemctl enable --now mysqlrouter
-📊 6. Verification & MonitoringCheck Cluster StatusJavaScriptcluster.status()
-Verify via SQLSQLSELECT * FROM mysql_innodb_cluster_metadata.instances;
-✅ Features AchievedHigh Availability: Automatic failover if the Primary node fails.Fault Tolerance: The cluster maintains quorum with 3 nodes.Read/Write Splitting:Port 6446: Read/Write traffic (directed to Primary)Port 6447: Read-Only traffic (distributed to Secondaries)Zero-Manual Recovery: Utilized the MySQL Clone Plugin for seamless node synchronization.🛠️ Vagrant Lab Environment (Optional)You can recreate this 3-node environment locally using the following Vagrantfile:RubyVagrant.configure("2") do |config|
-  config.vm.box = "generic/oracle9"
-  
-  (1..3).each do |i|
-    config.vm.define "dc-node#{i}" do |node|
-      node.vm.hostname = "dc-node#{i}"
-      node.vm.network "private_network", ip: "192.168.56.1#{i}"
-      node.vm.provider "virtualbox" do |vb|
-        vb.memory = "2048"
-        vb.cpus = 2
-      end
-    end
-  end
-end
+
+
+📊 5. Monitoring and Verification
+
+To verify the cluster health, run the following in MySQL Shell:
+
+var cluster = dba.getCluster('WafiCluster')
+cluster.status()
+
